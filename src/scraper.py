@@ -113,8 +113,12 @@ class ARCAScraper:
         ) from last_error
 
     async def _run_flow(self) -> UserInfo:
+        import time
+        t0 = time.perf_counter()
+
         page = await self._context.new_page()
         intercepted_user: Optional[dict] = {}
+        _api_ready = asyncio.Event()
 
         async def _on_response(response: Response):
             for pattern in API_PATTERNS:
@@ -124,19 +128,22 @@ class ARCAScraper:
                         data = await response.json()
                         logger.debug("Intercepted API response from %s", response.url)
                         intercepted_user.update(data if isinstance(data, dict) else {})
+                        _api_ready.set()
                     except Exception:
                         pass
 
         page.on("response", _on_response)
 
         try:
-            await self._login(page)
+            await self._login(page, _api_ready)
             user_info = await self._extract_user(page, intercepted_user)
+            elapsed = time.perf_counter() - t0
+            logger.info("_run_flow completed in %.2fs for CUIT %s", elapsed, self.cuit)
             return user_info
         finally:
             await page.close()
 
-    async def _login(self, page: Page) -> None:
+    async def _login(self, page: Page, api_ready: asyncio.Event) -> None:
         logger.info("Navigating to login page")
         await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=self.timeout_ms)
 
@@ -158,9 +165,14 @@ class ARCAScraper:
         logger.info("Logged in successfully, current URL: %s", page.url)
 
         try:
-            await page.wait_for_load_state("networkidle", timeout=self.timeout_ms)
-        except PlaywrightTimeoutError:
-            logger.warning("networkidle timeout — proceeding with partial load")
+            await asyncio.wait_for(api_ready.wait(), timeout=8.0)
+            logger.info("API data intercepted — skipping networkidle wait")
+        except asyncio.TimeoutError:
+            logger.info("API data not yet available — giving DOM extra time")
+            try:
+                await page.wait_for_load_state("load", timeout=5_000)
+            except PlaywrightTimeoutError:
+                logger.warning("load state timeout — proceeding")
 
     async def _extract_user(
         self, page: Page, intercepted: dict
