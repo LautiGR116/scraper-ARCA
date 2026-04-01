@@ -1,16 +1,3 @@
-"""
-FastAPI REST API.
-
-Exposes the ARCA scraper as an HTTP service.
-
-Endpoints
----------
-POST /scrape          – scrape a single CUIT and return JSON
-POST /scrape/batch    – scrape multiple CUITs concurrently
-GET  /download/{job}  – download the generated CSV for a job
-GET  /health          – liveness check
-"""
-
 import asyncio
 import logging
 import os
@@ -32,7 +19,6 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_SCRAPERS", "5"))
 
-# In-memory job registry  {job_id: {"status": ..., "records": [...], "path": ...}}
 _jobs: dict[str, dict] = {}
 _semaphore: asyncio.Semaphore | None = None
 
@@ -54,7 +40,6 @@ app = FastAPI(
 )
 
 
-# ── Request / Response models ─────────────────────────────────────────────────
 class ScrapeRequest(BaseModel):
     cuit: Annotated[str, Field(examples=["20123456789"])]
     password: Annotated[str, Field(min_length=1)]
@@ -93,7 +78,6 @@ class BatchScrapeResponse(BaseModel):
     failed: int = 0
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 async def _scrape_one(req: ScrapeRequest, job_id: str) -> dict:
     assert _semaphore is not None
     async with _semaphore:
@@ -110,7 +94,6 @@ async def _scrape_one(req: ScrapeRequest, job_id: str) -> dict:
     return record
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["meta"])
 async def health():
     return {"status": "ok"}
@@ -155,10 +138,6 @@ async def scrape_single(req: ScrapeRequest):
     summary="Scrape multiple CUITs (async, background)",
 )
 async def scrape_batch(req: BatchScrapeRequest, background_tasks: BackgroundTasks):
-    """
-    Enqueue a batch of scrape jobs.  Returns a job_id immediately;
-    use GET /download/{job_id} once the job is complete.
-    """
     job_id = uuid.uuid4().hex
     _jobs[job_id] = {
         "status": "running",
@@ -210,7 +189,6 @@ async def download_csv(job_id: str):
     )
 
 
-# ── Background task ───────────────────────────────────────────────────────────
 async def _run_batch(job_id: str, credentials: list[ScrapeRequest]):
     csv_path = OUTPUT_DIR / f"{job_id}.csv"
     tasks = [_scrape_one(cred, job_id) for cred in credentials]

@@ -1,10 +1,3 @@
-"""
-CSV exporter module.
-
-Writes processed UserInfo dicts to a CSV file.
-Supports both single-record writes and bulk appends.
-"""
-
 import csv
 import logging
 import os
@@ -17,14 +10,6 @@ CSV_FIELDNAMES = ["cuit", "apellido", "nombre", "full_name"]
 
 
 def export_to_csv(records: Sequence[dict], output_path: str | os.PathLike) -> Path:
-    """
-    Write *records* to *output_path* as CSV.
-
-    Creates the file (and parent directories) if they don't exist.
-    Overwrites any existing file at that path.
-
-    Returns the resolved Path of the written file.
-    """
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -43,12 +28,6 @@ def export_to_csv(records: Sequence[dict], output_path: str | os.PathLike) -> Pa
 
 
 def append_to_csv(record: dict, output_path: str | os.PathLike) -> Path:
-    """
-    Append a single *record* to *output_path*.
-
-    Creates the file with a header row if it doesn't exist yet;
-    otherwise appends without re-writing the header.
-    """
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
 

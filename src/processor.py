@@ -1,11 +1,3 @@
-"""
-Processor module.
-
-Validates and normalises raw UserInfo objects before export.
-Keeping this layer separate allows adding enrichment logic (e.g. CUIT
-checksum validation, name normalisation) without touching the scraper.
-"""
-
 import logging
 import re
 from dataclasses import asdict
@@ -18,7 +10,6 @@ _CUIT_RE = re.compile(r"^\d{11}$")
 
 
 def validate_cuit(cuit: str) -> bool:
-    """Verify CUIT/CUIL format and check digit."""
     cuit = cuit.replace("-", "").strip()
     if not _CUIT_RE.match(cuit):
         return False
@@ -31,12 +22,6 @@ def validate_cuit(cuit: str) -> bool:
 
 
 def process(user_info: UserInfo) -> dict:
-    """
-    Validate and normalise a UserInfo instance.
-
-    Returns a plain dict ready for CSV export.
-    Raises ValueError if validation fails.
-    """
     if not validate_cuit(user_info.cuit):
         raise ValueError(f"Invalid CUIT: {user_info.cuit}")
 
@@ -58,6 +43,5 @@ def process(user_info: UserInfo) -> dict:
 
 
 def _format_cuit(raw: str) -> str:
-    """Format raw 11-digit CUIT as XX-XXXXXXXX-X."""
     digits = raw.replace("-", "").strip()
     return f"{digits[:2]}-{digits[2:10]}-{digits[10]}"

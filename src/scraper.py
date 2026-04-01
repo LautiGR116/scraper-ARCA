@@ -1,12 +1,3 @@
-"""
-ARCA scraper module.
-
-Handles browser automation via Playwright:
-  - Two-step login (CUIT → password)
-  - User data extraction (nombre + apellido)
-  - Internal API interception as primary strategy, HTML fallback
-"""
-
 import asyncio
 import logging
 from dataclasses import dataclass
@@ -22,7 +13,6 @@ from playwright.async_api import (
 
 logger = logging.getLogger(__name__)
 
-# ── Selectors ────────────────────────────────────────────────────────────────
 LOGIN_URL = "https://auth.afip.gob.ar/contribuyente_/login.xhtml"
 
 SEL_CUIT_INPUT = "input#F1\\:username"
@@ -30,10 +20,8 @@ SEL_SIGUIENTE_BTN = "input#F1\\:btnSiguiente"
 SEL_PASSWORD_INPUT = "input#F1\\:password"
 SEL_INGRESAR_BTN = "input#F1\\:btnIngresar"
 
-# Selectors tried in order to locate the authenticated user's full name
-# on the portal home page.  The list is ordered from most to least reliable.
 USER_NAME_SELECTORS = [
-    "#usernav strong.text-primary",   # ARCA portal (2024+)
+    "#usernav strong.text-primary",
     "#usernav strong",
     ".usernav strong",
     "#contenidoInformacionPersonal .nombre",
@@ -51,7 +39,6 @@ API_PATTERNS = [
 ]
 
 
-# ── Data types ────────────────────────────────────────────────────────────────
 @dataclass
 class UserInfo:
     cuit: str
@@ -60,17 +47,7 @@ class UserInfo:
     full_name: str
 
 
-# ── Core scraper ──────────────────────────────────────────────────────────────
 class ARCAScraper:
-    """
-    Playwright-based scraper for the ARCA / AFIP portal.
-
-    Usage::
-
-        async with ARCAScraper(cuit="20123456789", password="secret") as scraper:
-            info = await scraper.fetch_user_info()
-    """
-
     def __init__(
         self,
         cuit: str,
@@ -91,7 +68,6 @@ class ARCAScraper:
         self._browser = None
         self._context: Optional[BrowserContext] = None
 
-    # ── Context manager ───────────────────────────────────────────────────────
     async def __aenter__(self) -> "ARCAScraper":
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
@@ -117,9 +93,7 @@ class ARCAScraper:
         if self._playwright:
             await self._playwright.stop()
 
-    # ── Public API ────────────────────────────────────────────────────────────
     async def fetch_user_info(self) -> UserInfo:
-        """Login and return the authenticated user's name data."""
         last_error: Exception = RuntimeError("No attempts made")
 
         for attempt in range(1, self.max_retries + 1):
@@ -130,7 +104,7 @@ class ARCAScraper:
                 last_error = exc
                 logger.warning("Attempt %d failed: %s", attempt, exc)
                 if attempt < self.max_retries:
-                    wait = 2 ** attempt  # exponential back-off: 2s, 4s
+                    wait = 2 ** attempt
                     logger.info("Retrying in %ds...", wait)
                     await asyncio.sleep(wait)
 
@@ -138,15 +112,12 @@ class ARCAScraper:
             f"All {self.max_retries} attempts failed for CUIT {self.cuit}"
         ) from last_error
 
-    # ── Private helpers ───────────────────────────────────────────────────────
     async def _run_flow(self) -> UserInfo:
         page = await self._context.new_page()
         intercepted_user: Optional[dict] = {}
 
-        # Intercept responses that may carry user data from internal APIs
         async def _on_response(response: Response):
             for pattern in API_PATTERNS:
-                # simple glob match on URL
                 import fnmatch
                 if fnmatch.fnmatch(response.url, pattern.replace("**", "*")):
                     try:
@@ -166,23 +137,19 @@ class ARCAScraper:
             await page.close()
 
     async def _login(self, page: Page) -> None:
-        """Perform the two-step ARCA login."""
         logger.info("Navigating to login page")
         await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=self.timeout_ms)
 
-        # ── Step 1: CUIT ─────────────────────────────────────────────────────
         logger.info("Entering CUIT")
         await page.wait_for_selector(SEL_CUIT_INPUT, timeout=self.timeout_ms)
         await page.fill(SEL_CUIT_INPUT, self.cuit)
         await page.click(SEL_SIGUIENTE_BTN)
 
-        # ── Step 2: password ─────────────────────────────────────────────────
         logger.info("Entering password")
         await page.wait_for_selector(SEL_PASSWORD_INPUT, timeout=self.timeout_ms)
         await page.fill(SEL_PASSWORD_INPUT, self.password)
         await page.click(SEL_INGRESAR_BTN)
 
-        # Wait for navigation away from the auth domain
         logger.info("Waiting for post-login redirect")
         await page.wait_for_url(
             lambda url: "auth.afip.gob.ar" not in url,
@@ -190,7 +157,6 @@ class ARCAScraper:
         )
         logger.info("Logged in successfully, current URL: %s", page.url)
 
-        # Wait for the portal to finish its async API calls before extraction
         try:
             await page.wait_for_load_state("networkidle", timeout=self.timeout_ms)
         except PlaywrightTimeoutError:
@@ -199,9 +165,7 @@ class ARCAScraper:
     async def _extract_user(
         self, page: Page, intercepted: dict
     ) -> UserInfo:
-        """Extract nombre + apellido, trying the intercepted API data first."""
 
-        # Strategy 1 – data already captured from an internal API response
         nombre, apellido = self._parse_intercepted(intercepted)
         if nombre and apellido:
             logger.info("User info from intercepted API: %s %s", nombre, apellido)
@@ -212,7 +176,6 @@ class ARCAScraper:
                 full_name=f"{nombre} {apellido}",
             )
 
-        # Strategy 2 – wait for a known CSS selector (main frame + child frames)
         all_frames = [page.main_frame] + [f for f in page.frames if f != page.main_frame]
         for selector in USER_NAME_SELECTORS:
             for frame in all_frames:
@@ -232,7 +195,6 @@ class ARCAScraper:
                 except (PlaywrightTimeoutError, Exception):
                     continue
 
-        # Strategy 3 – scan all frames (main + iframes) for "Apellido, Nombre"
         logger.warning("Falling back to full-page text scan")
         if self.debug:
             await self._dump_debug(page)
@@ -253,7 +215,6 @@ class ARCAScraper:
         )
 
     async def _dump_debug(self, page: Page) -> None:
-        """Save screenshot + HTML of every frame to debug/ for inspection."""
         import os
         os.makedirs("debug", exist_ok=True)
         await page.screenshot(path="debug/portal.png", full_page=True)
@@ -269,10 +230,6 @@ class ARCAScraper:
                 logger.debug("Could not dump frame %d: %s", i, exc)
 
     async def _scan_page_for_name(self, page: Page) -> str:
-        """
-        Search all frames (main document + iframes) for text matching the
-        AFIP pattern 'APELLIDO, NOMBRE'. Returns the first match or ''.
-        """
         _JS = """() => {
             // Match "APELLIDO, NOMBRE" (all-caps with comma) OR
             // "Apellido Nombre1 Nombre2" (title-case, no comma, 2+ words)
@@ -292,12 +249,10 @@ class ARCAScraper:
             return scan(document);
         }"""
 
-        # Try main frame first
         result: str = await page.evaluate(_JS)
         if result.strip():
             return result.strip()
 
-        # Try each child frame (iframes)
         for frame in page.frames:
             if frame == page.main_frame:
                 continue
@@ -313,10 +268,6 @@ class ARCAScraper:
 
     @staticmethod
     def _parse_intercepted(data: dict) -> tuple[str, str]:
-        """
-        Try common key names used by AFIP/ARCA internal APIs.
-        Returns (nombre, apellido) or ('', '').
-        """
         candidates = [
             ("nombre", "apellido"),
             ("primerNombre", "primerApellido"),
@@ -327,7 +278,6 @@ class ARCAScraper:
             if nom_key in data and ape_key in data:
                 return str(data[nom_key]).strip(), str(data[ape_key]).strip()
 
-        # Nested under 'datosPersonales' or similar wrappers
         for wrapper in ("datosPersonales", "persona", "contribuyente", "data"):
             nested = data.get(wrapper)
             if isinstance(nested, dict):
@@ -339,19 +289,13 @@ class ARCAScraper:
 
     @staticmethod
     def _split_full_name(full_name: str) -> tuple[str, str]:
-        """
-        Split 'APELLIDO, NOMBRE' or 'NOMBRE APELLIDO' into (nombre, apellido).
-        Returns ('', '') if the string is empty.
-        """
         if not full_name:
             return "", ""
 
         if "," in full_name:
             parts = [p.strip().title() for p in full_name.split(",", 1)]
-            # AFIP format is typically 'APELLIDO, NOMBRE'
             apellido, nombre = parts[0], parts[1]
         else:
-            # ARCA format without comma: "Apellido Nombre1 [Nombre2]"
             words = full_name.strip().title().split()
             apellido = words[0] if words else ""
             nombre = " ".join(words[1:]) if len(words) > 1 else ""

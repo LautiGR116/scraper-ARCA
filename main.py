@@ -1,21 +1,3 @@
-"""
-CLI entry point.
-
-Usage
------
-  # Scrape a single account and write to output/result.csv
-  python main.py --cuit 20123456789 --password s3cr3t
-
-  # Custom output path
-  python main.py --cuit 20123456789 --password s3cr3t --output data/me.csv
-
-  # Show the browser window (non-headless)
-  python main.py --cuit 20123456789 --password s3cr3t --no-headless
-
-  # Start the API server
-  python main.py --serve
-"""
-
 import argparse
 import asyncio
 import logging
