@@ -1,0 +1,12 @@
+services:
+  arca-scraper:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./output:/app/output
+    env_file:
+      - .env
+    environment:
+      OUTPUT_DIR: /app/output
+    restart: unless-stopped

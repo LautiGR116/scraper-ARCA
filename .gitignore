@@ -1,0 +1,42 @@
+# ── Secrets & environment ──────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Runtime output ─────────────────────────────────────────────────────────
+output/
+debug/
+*.log
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ── Testing & coverage ─────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+playwright-report/
+
+# ── Type checking & linting ────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
