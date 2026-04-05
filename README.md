@@ -1,12 +1,11 @@
 # Scraper ARCA
 
-Automatiza la consulta de datos personales (nombre y apellido) en el portal de [ARCA](https://www.arca.gob.ar) (ex-AFIP) usando tus propias credenciales de Clave Fiscal. Funciona como CLI o como servicio REST con soporte para scraping en batch.
+Automatiza la consulta de datos personales (nombre y apellido) en el portal de [ARCA](https://www.arca.gob.ar) (ex-AFIP) usando tus propias credenciales de Clave Fiscal. Funciona como CLI o como servicio REST.
 
 ## Características
 
-- **CLI**: scrapeá un CUIT y exportá el resultado a CSV con un solo comando
-- **API REST**: servicio FastAPI con endpoints para scraping individual y batch concurrente
-- **Batch**: hasta 50 CUITs en paralelo, con semáforo configurable
+- **CLI**: scrapeá tu CUIT y exportá el resultado a CSV con un solo comando
+- **API REST**: servicio FastAPI con endpoint para scraping individual
 - **CSV export**: salida estructurada con CUIT, nombre, apellido y nombre completo
 - **Docker**: imagen lista para producción con Chromium incluido
 
@@ -34,12 +33,11 @@ cp .env.example .env
 
 ## Variables de entorno
 
-| Variable                  | Default    | Descripción                                      |
-|---------------------------|------------|--------------------------------------------------|
-| `ARCA_CUIT`               | —          | CUIT/CUIL de 11 dígitos (con o sin guiones)      |
-| `ARCA_PASSWORD`           | —          | Contraseña de Clave Fiscal                        |
-| `OUTPUT_DIR`              | `output`   | Directorio donde se guardan los CSV              |
-| `MAX_CONCURRENT_SCRAPERS` | `5`        | Scrapers simultáneos en el endpoint batch        |
+| Variable        | Default    | Descripción                                 |
+|-----------------|------------|---------------------------------------------|
+| `ARCA_CUIT`     | —          | CUIT/CUIL de 11 dígitos (con o sin guiones) |
+| `ARCA_PASSWORD` | —          | Contraseña de Clave Fiscal                  |
+| `OUTPUT_DIR`    | `output`   | Directorio donde se guardan los CSV         |
 
 ## Uso
 
@@ -75,13 +73,10 @@ Documentación interactiva disponible en `http://localhost:8000/docs`.
 
 #### Endpoints
 
-| Método | Ruta                      | Descripción                          |
-|--------|---------------------------|--------------------------------------|
-| `GET`  | `/health`                 | Liveness check                       |
-| `POST` | `/scrape`                 | Scraping individual (síncrono)       |
-| `POST` | `/scrape/batch`           | Batch de hasta 50 CUITs (async)      |
-| `GET`  | `/scrape/batch/{job_id}`  | Estado de un job batch               |
-| `GET`  | `/download/{job_id}`      | Descarga el CSV de un job completado |
+| Método | Ruta      | Descripción                    |
+|--------|-----------|--------------------------------|
+| `GET`  | `/health` | Liveness check                 |
+| `POST` | `/scrape` | Scraping individual (síncrono) |
 
 **Scraping individual:**
 
@@ -91,17 +86,19 @@ curl -X POST http://localhost:8000/scrape \
   -d '{"cuit": "20123456789", "password": "tu_clave"}'
 ```
 
-**Batch:**
+Respuesta:
 
-```bash
-curl -X POST http://localhost:8000/scrape/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "credentials": [
-      {"cuit": "20123456789", "password": "clave1"},
-      {"cuit": "27987654321", "password": "clave2"}
-    ]
-  }'
+```json
+{
+  "status": "completed",
+  "data": {
+    "cuit": "20-12345678-9",
+    "nombre": "Juan",
+    "apellido": "Pérez",
+    "full_name": "Juan Pérez"
+  },
+  "csv_path": "output/abc123.csv"
+}
 ```
 
 ## Docker
@@ -133,6 +130,8 @@ docker compose run --rm arca-scraper \
 │   ├── processor.py     # Validación y normalización de datos
 │   ├── exporter.py      # Escritura a CSV
 │   └── api.py           # FastAPI app
+├── tests/
+│   └── test_scraping.py # Tests básicos
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
