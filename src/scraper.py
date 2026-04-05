@@ -104,8 +104,8 @@ class ARCAScraper:
                 last_error = exc
                 logger.warning("Attempt %d failed: %s", attempt, exc)
                 if attempt < self.max_retries:
-                    wait = 2 ** attempt
-                    logger.info("Retrying in %ds...", wait)
+                    wait = [0.5, 1.0, 1.5][attempt - 1]
+                    logger.info("Retrying in %.1fs...", wait)
                     await asyncio.sleep(wait)
 
         raise RuntimeError(
