@@ -96,8 +96,7 @@ Respuesta:
     "nombre": "Juan",
     "apellido": "Pérez",
     "full_name": "Juan Pérez"
-  },
-  "csv_path": "output/abc123.csv"
+  }
 }
 ```
 
@@ -130,8 +129,6 @@ docker compose run --rm arca-scraper \
 │   ├── processor.py     # Validación y normalización de datos
 │   ├── exporter.py      # Escritura a CSV
 │   └── api.py           # FastAPI app
-├── tests/
-│   └── test_scraping.py # Tests básicos
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
