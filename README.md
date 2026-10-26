@@ -1,140 +1,106 @@
-# Scraper ARCA
+# ARCA Scraper
 
-Automatiza la consulta de datos personales (nombre y apellido) en el portal de [ARCA](https://www.arca.gob.ar) (ex-AFIP) usando tus propias credenciales de Clave Fiscal. Funciona como CLI o como servicio REST.
+Python automation for retrieving the authenticated user's name and surname from Argentina's ARCA portal, with a CLI and a FastAPI interface.
 
-## Características
+The project demonstrates browser automation, structured data extraction, validation and CSV persistence. It uses **Playwright**, rather than Selenium, and is separate from the production systems described in my professional experience.
 
-- **CLI**: scrapeá tu CUIT y exportá el resultado a CSV con un solo comando
-- **API REST**: servicio FastAPI con endpoint para scraping individual
-- **CSV export**: salida estructurada con CUIT, nombre, apellido y nombre completo
-- **Docker**: imagen lista para producción con Chromium incluido
+## How it works
 
-## Requisitos
-
-- Python 3.12+
-- [Playwright](https://playwright.dev/python/) con Chromium instalado
-
-O bien: Docker + Docker Compose.
-
-## Instalación local
-
-```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-playwright install chromium
+```text
+CLI / FastAPI request
+        ↓
+Playwright browser session → authenticated portal
+        ↓
+JSON response extraction → DOM/frame fallbacks
+        ↓
+CUIT checksum validation + name normalization
+        ↓
+CSV file + structured API response
 ```
 
-Copiá el archivo de ejemplo y completá tus credenciales:
+- Async Playwright context management closes browser resources after each scrape.
+- Login attempts use configurable retries (three by default).
+- Extraction first checks matching JSON responses, then DOM selectors across frames, then a page-text fallback.
+- Processing validates the CUIT checksum and required name fields.
+- The API writes each result to its own CSV file; the CLI accepts an output path.
+- Docker uses a multi-stage build and runs the application as a non-root user.
+
+## Quick start
+
+Requires Python 3.12 and Chromium's system dependencies, or Docker with Compose.
 
 ```bash
+git clone https://github.com/LautiGR116/scraper-ARCA.git
+cd scraper-ARCA
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install --with-deps chromium
 cp .env.example .env
 ```
 
-## Variables de entorno
+On Windows, activate the environment with `.venv\Scripts\activate`.
 
-| Variable        | Default    | Descripción                                 |
-|-----------------|------------|---------------------------------------------|
-| `ARCA_CUIT`     | —          | CUIT/CUIL de 11 dígitos (con o sin guiones) |
-| `ARCA_PASSWORD` | —          | Contraseña de Clave Fiscal                  |
-| `OUTPUT_DIR`    | `output`   | Directorio donde se guardan los CSV         |
-
-## Uso
-
-### CLI
+Set `ARCA_PASSWORD` in your local `.env`, then pass your own CUIT explicitly:
 
 ```bash
-# Scraping básico → output/result.csv
-python main.py --cuit 20123456789 --password tu_clave
-
-# Ruta de salida personalizada
-python main.py --cuit 20123456789 --password tu_clave --output data/resultado.csv
-
-# Ver el navegador (modo no-headless, útil para depurar)
-python main.py --cuit 20123456789 --password tu_clave --no-headless
-
-# Guardar capturas de pantalla en debug/ ante un fallo
-python main.py --cuit 20123456789 --password tu_clave --debug
-
-# Iniciar el servidor API
-python main.py --serve
+python main.py --cuit YOUR_11_DIGIT_CUIT
+python main.py --cuit YOUR_11_DIGIT_CUIT --output output/result.csv
+python main.py --cuit YOUR_11_DIGIT_CUIT --no-headless
+python main.py --help
 ```
 
-Las credenciales también pueden leerse desde el `.env` o desde variables de entorno del sistema.
+The CLI reads the password from `--password` or `ARCA_PASSWORD`; using the environment avoids putting it in shell history. Although the example environment file includes `ARCA_CUIT`, the CLI currently requires `--cuit`.
 
-### API REST
+## REST API
 
 ```bash
-python main.py --serve               # http://localhost:8000
-python main.py --serve --port 9000   # puerto personalizado
+python main.py --serve --host 127.0.0.1
 ```
 
-Documentación interactiva disponible en `http://localhost:8000/docs`.
+Interactive documentation: [http://localhost:8000/docs](http://localhost:8000/docs).
 
-#### Endpoints
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/health` | Returns `{"status":"ok"}`; does not check the ARCA portal. |
+| POST | `/scrape` | Accepts `cuit`, `password` and optional `headless`; waits for scraping to finish. |
 
-| Método | Ruta      | Descripción                    |
-|--------|-----------|--------------------------------|
-| `GET`  | `/health` | Liveness check                 |
-| `POST` | `/scrape` | Scraping individual (síncrono) |
-
-**Scraping individual:**
-
-```bash
-curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{"cuit": "20123456789", "password": "tu_clave"}'
-```
-
-Respuesta:
-
-```json
-{
-  "status": "completed",
-  "data": {
-    "cuit": "20-12345678-9",
-    "nombre": "Juan",
-    "apellido": "Pérez",
-    "full_name": "Juan Pérez"
-  }
-}
-```
+Successful responses contain `status: "completed"` and `data` with `cuit`, `nombre`, `apellido` and `full_name`. The normalized full name uses `"Surname, Given name"`. Scraping failures return HTTP 502.
 
 ## Docker
 
 ```bash
-# Construir y levantar
+cp .env.example .env
 docker compose up --build
-
-# En background
-docker compose up -d --build
 ```
 
-Los CSV se persisten en `./output` mediante un volumen montado.
-
-Para scraping CLI dentro del contenedor:
+Compose exposes port 8000 and mounts `./output` at `/app/output`. CSV results persist there.
 
 ```bash
 docker compose run --rm arca-scraper \
-  python main.py --cuit 20123456789 --password tu_clave
+  python main.py --cuit YOUR_11_DIGIT_CUIT
 ```
 
-## Estructura del proyecto
+| Variable | Purpose |
+| --- | --- |
+| `ARCA_PASSWORD` | CLI password fallback. API requests provide their own password. |
+| `OUTPUT_DIR` | API CSV directory; defaults to `output`. The CLI uses `--output`. |
 
-```
-.
-├── main.py              # Punto de entrada CLI/servidor
-├── src/
-│   ├── scraper.py       # Lógica de automatización con Playwright
-│   ├── processor.py     # Validación y normalización de datos
-│   ├── exporter.py      # Escritura a CSV
-│   └── api.py           # FastAPI app
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-└── .env.example
-```
+## Code map
 
-## Aviso legal
+| File | Responsibility |
+| --- | --- |
+| [main.py](main.py) | CLI arguments and server entry point |
+| [src/scraper.py](src/scraper.py) | Login, retries and extraction fallbacks |
+| [src/processor.py](src/processor.py) | CUIT validation and normalization |
+| [src/exporter.py](src/exporter.py) | CSV output |
+| [src/api.py](src/api.py) | FastAPI models and routes |
 
-Esta herramienta opera exclusivamente con tus propias credenciales de Clave Fiscal sobre tus propios datos. No está diseñada para acceder a datos de terceros. Su uso es responsabilidad del usuario y debe realizarse dentro del marco legal vigente.
+## Scope and limitations
+
+This repository is an automation example, not a production-ready hosted service. The API currently has no authentication, rate limiting or concurrency bound; each request launches a browser. Keep it local or behind appropriate access controls. Portal changes can break extraction, and splitting full names is heuristic.
+
+There is currently no automated test suite in the repository. The commands above describe the implementation; they do not imply a live portal test has been performed.
+
+Use only your own credentials and data. Output CSVs, logs and optional `--debug` screenshots/HTML may contain personal data; keep them out of version control. The tool is not designed to access third-party accounts.
+
